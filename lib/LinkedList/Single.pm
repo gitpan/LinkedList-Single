@@ -20,18 +20,29 @@ use overload
         # the list handler is true if the current 
         # node is not empty (i.e., is not at the 
         # final node).
+        #
+        # this allows for:
+        #
+        # $listh->head; while( $listh->next ){ ... }
 
         my $listh   = shift;
 
-        scalar @$$listh
+        !! $$listh->[0]
     },
 );
+
+BEGIN
+{
+    our $VERSION
+    = $[ >=  5.10
+    ? do{ require "$]"; v0.99.4 }
+    : '0.99.4'
+    ;
+}
 
 ########################################################################
 # package variables
 ########################################################################
-
-our $VERSION    = '0.99.1';
 
 # inside-out data for the heads of the lists.
 
@@ -81,7 +92,7 @@ sub initialize
         # if they want to so this should just take
         # the location as-is.
 
-        my $node    = $headz{ refaddr $listh }[0];
+        my $node    = $listh->head_node;
 
         ( $node ) = @$node = ( [], $_ )
         for @_;
@@ -219,16 +230,27 @@ sub set_meta
 {
     my $listh   = shift;
 
-    my $head    = $headz{ refaddr $listh };
+    my $head    = $listh->root;
 
     splice @$head, 1, $#$head, @_;
 
     $listh
 }
 
+sub add_meta
+{
+    my $listh   = shift;
+
+    my $head    = $listh->root;
+
+    push @$head, @_;
+
+    $listh
+}
+
 sub get_meta
 {
-    my $head    = $headz{ refaddr $_[0] };
+    my $head    = $_[0]->root;
 
     wantarray
     ?   @{ $head }[ 1 .. $#$head ]
@@ -238,11 +260,11 @@ sub get_meta
 ########################################################################
 # node/list status
 
-sub has_links
+sub has_nodes
 {
     # i.e., is the list populated?
 
-    my $head    = $headz{ refaddr $_[0] };
+    my $head    = $_[0]->root;
 
     !! @{ $head->[0] }
 }
@@ -263,10 +285,24 @@ sub is_empty
 
     my $listh   = shift;
 
-    @{ $$listh } > 1
+    ! @{ $$listh }
 }
 
 sub data
+{
+    my $listh   = shift;
+    my $node    = $$listh;
+
+    # return the existing data, sans the next ref.
+
+    my @valz    = @{ $node }[ 1 .. $#$node ];
+
+    wantarray
+    ?  @valz
+    : \@valz
+}
+
+sub set_data
 {
     my $listh   = shift;
     my $node    = $$listh;
@@ -286,41 +322,58 @@ sub data
         ?  @valz
         : \@valz
     }
-    elsif( @_ )
+    else
     {
         splice @$node, 1, $#$node, @_;
 
         return
     }
-    else
-    {
-        # no good reason to call this without @_ or 
-        # wantarray, but returning seems the right 
-        # thing to do.
-
-        return
-    }
 }
 
-sub head_ref
+sub clear_data
 {
-    # mainly for testing.
-    # also useful for using external code to walk the list.
+    my $listh   = shift;
+    my $node    = $$listh;
 
-    $headz{ refaddr $_[0] }
+    splice @$node, 1;
+
+    $listh
 }
 
 ########################################################################
-# basic list manipulation
+# access the list head.
+#
+# root is mainly useful for testing, 
+# head_node for externally walking the 
+# list (i.e., when OO calls are too expensive).
+
+sub root
+{
+    $headz{ refaddr $_[0] }
+}
+
+# get rid of this once W-curve no longer uses it.
+
+*head_ref   = \&root;
+
+sub head_node
+{
+    my $listh   = shift;
+
+    $listh->root->[0]
+}
 
 sub head
 {
     my $listh   = shift;
 
-    $$listh     = $headz{ refaddr $listh }[0];
+    $$listh     = $listh->head_node;
 
     $listh
 }
+
+########################################################################
+# walk the list.
 
 sub next
 {
@@ -337,7 +390,7 @@ sub next
 sub each
 {
     my $listh   = shift;
-    my $node    = $$listh || $listh->head_ref;
+    my $node    = $$listh || $listh->root;
 
     if( @$node )
     {
@@ -361,6 +414,12 @@ sub each
     }
 }
 
+########################################################################
+# modify the list
+#
+# add uses a relative position (e.g., for insertion sort), others
+# use the head (or last) node.
+
 sub add
 {
     my $listh   = shift;
@@ -382,36 +441,6 @@ sub add
 # which leaves the while loop running only
 # once per push.
 
-sub push
-{
-    my $listh   = shift;
-    my $node    = $$listh;
-
-    $node       = $node->[0]
-    while @$node;
-
-    # at this point we're at the list tail: the
-    # empty placeholder arrayref. populate it in
-    # place with a new tail.
-
-    @$node      = ( [], @_ );
-
-    $$listh     = $node;
-
-    $listh
-}
-
-sub unshift
-{
-    my $listh   = shift;
-    my $head    = $headz{ refaddr $listh };
-
-    $head->[0]  = [ $head->[0], @_ ];
-
-    $listh
-}
-
-
 # shift and cut do the same basic thing, question
 # is whether it's done mid-list or at the head.
 # pop could work this way if it weren't so bloody
@@ -432,14 +461,12 @@ sub cut
     # nothing to cut if we are at the end-of-list.
     # or the node prior to it.
 
-    @$node
+    @{ $node->[0] }
     or return;
 
     if( defined wantarray )
     {
-        my @valz    = @{ $node->[0] }
-        or return;
-
+        my @valz   =  @{ $node->[0] };
         $node->[0] = shift @valz;
 
         wantarray
@@ -451,16 +478,12 @@ sub cut
         # once again: discard the data if the 
         # user doesn't want it.
 
-        $node->[0][0]
-        and $node->[0] = $node->[0][0];
-
-        return
+        $node->[0] = $node->[0][0];
     }
 }
 
 ########################################################################
-# put these last to avoid having to use CORE::shift
-# and CORE::splice everythwere.
+# put these last to avoid having to use CORE::blah everythwere else.
 
 sub splice
 {
@@ -486,15 +509,48 @@ sub splice
         $next   = $next->[0];
     }
 
-    my $dead    = $node->[0];
+    # this is the start of the chain that gets removed.
+    # keep it alive for a few steps to see if the caller
+    # wants it back or we should clean it up.
+    #
+    # after that, splice the node out of the list.
 
-    $node->[0]  = $next->[0];
+    my $dead    = $node->[0];
+    $node->[0]  = delete $next->[0];
+
+    # at this point $dead is a runt linked
+    # list without a terminating node.
+    #
+    # insert anything on the stack after the 
+    # current node.
+
+    for( @_ )
+    {
+       $node    = $node->[0] = [ $node->[0], shift ];
+    }
+
+    # if the caller wants anything back then
+    # clean up the dead chain and hand it back.
+    #
+    # node: maybe this should return an array of
+    # arrayrefs?
 
     if( defined wantarray )
     {
-        $next->[0]  = [];
+        my @valz    = ();
 
-        $dead;
+        $node       = $dead;
+
+        while( $node->[0] )
+        {
+            push @valz, @{ $node }[ 1 .. $#$node ];
+        }
+
+        $cleanup->( $dead );
+
+        wantarray
+        ? @valz
+        : \@valz
     }
     else
     {
@@ -502,11 +558,39 @@ sub splice
     }
 }
 
+sub push
+{
+    my $listh   = shift;
+    my $node    = $$listh;
+
+    $node       = $node->[0]
+    while @$node;
+
+    # at this point we're at the list tail: the
+    # empty placeholder arrayref. populate it in
+    # place with a new tail.
+
+    @$node      = ( [], @_ );
+
+    $$listh     = $node;
+
+    $listh
+}
+
+sub unshift
+{
+    my $head    = $_[0]->root;
+
+    $head->[0]  = [ $head->[0], @_ ];
+
+    $_[0]
+}
+
 
 sub shift
 {
     my $listh   = shift;
-    my $head    = $headz{ refaddr $listh };
+    my $head    = $listh->root;
 
     # need to replace $listh contents if it
     # referrs to the head we are removing!
@@ -539,6 +623,7 @@ sub shift
         return
     }
 }
+
 # keep require happy
 
 1
@@ -656,7 +741,7 @@ LinkedList::Single - singly linked list manager.
 
     # for those do-it-yourselfers in the crowd:
 
-    my $node    = $listh->head_ref;
+    my $node    = $listh->root;
 
     while( @$node )
     {
@@ -717,8 +802,281 @@ uses:
 
     $$listh = $$list->[0]
 
-this allows $listh to be blessed and use inside-
-out data structures while the nodes are un-blessed.
+this allows $listh to be blessed without having
+to bless every node on the list.
+
+=head2 Methods
+
+=over 4
+
+=item new construct initialize 
+
+New is the constructor, which simply calls construct,
+passes the remaining stack to initialize, and returns
+the constructed object.
+
+initialize is fodder for overloading, the default simply 
+adds each item on the stack to one node as data.
+
+construct should not be replaced since it installs
+local data for the list (its head). 
+
+=item clone
+
+Produce a new $listh that shares a head with the 
+existing one. This is useful to walk a list when
+the existing node's state has to be kept.
+
+    my $clone   = $listh->clone->head;
+
+    while( my @valz = $clone->each )
+    {
+        # play with the data
+    }
+
+    # note that $listh is unaffected by the 
+    # head or walking via each.
+
+=item set_meta add_meta get_meta 
+
+These allow storing list-wide data in the head.
+get_meta returns whatever set_meta has stored
+there, add_meta simply pushes more onto the list.
+These can be helpful for keeping track of separate
+lists or in derived classes can use these to provide
+data for overloading.
+
+=item has_nodes has_next is_empty 'bool'
+
+has_nodes is true if the list has any nodes
+at all; has_next is true if the current node
+has a next link.
+
+The boolean overload is true if the current
+node has a next link (i.e., if calling $listh->next
+will go anywhere).
+
+    sub walk_the_list
+    {
+        my $listh   = shift;
+
+        $listh->has_nodes
+        or return;
+
+        $listh->head;
+
+        while( $listh )
+        {
+            # deal with the data in this node
+        }
+        continue
+        {
+            $listh->next;
+        }
+    }
+
+=item data set_data clear_data
+
+These return or set the data. They cannot be combined
+into a single method because there isn't any clean way
+to determine if the node needs to be emptied or left
+unmodified due to an empty stack. The option of using
+
+    $listh->data( undef )
+
+for cleaning the node leaves no way to store an explicit
+undef in the node. 
+
+=item node
+
+Set/get the current node on the list.
+
+This can be used for tell/seek positioning on the list.
+
+    my $old = $listh->node;
+
+    $listh->head;
+
+    ...
+
+
+    $listh->node( $old );
+
+Note that setting a new position returns the new
+position, not the old one. This simplifies re-set
+logic which can simply return the result of setting
+the new node.
+
+This is also the place to get nodes for processing
+by functional code or derived classes.
+
+=item root head_node
+
+These return the internal data (root) or first
+data node (head_node).
+
+head_node is useful for anyone whthat wants to walk the
+list using functional code:
+
+    my $node    = $listh->head_node;
+    my @data    = ();
+
+    for(;;)
+    {
+        @$node  or last;
+
+        ( $node, @data ) = @$node;
+
+        # play with @data.
+    }
+
+moves the least amount of data to walk the entire list.
+
+root is mainly useful for intenal code or derived
+classes. This is used by all methods other than 
+construct, DESTROY, clone, and root to access the
+list's head. Derived classes can override these methods
+to use another form of storage for the list root.
+
+=item head next each
+
+head and next start the list at the top and walk the list.
+
+each is kinda like Perl's each: it returns data until 
+the end-of-list is reached. It makes no attempt, however,
+to initialize or reset the list, only walk it. 
+
+Called in a scalar context this returns an arrayref
+with copies of the data (i.e., modifying the returned
+data will not modify the node's data). This is a feature.
+
+When the data is exhausted an empty list or undef are
+returned. If your list has empty nodes then you want 
+to get the data back in a scalar context:
+
+    # if the list has valid empty nodes, use
+    # a scalar return to check for end-of-list.
+
+    $listh->head;
+
+    my $data    = '';
+
+    while( $data = $listh->each )
+    {
+        # play with @$data
+    }
+
+or
+
+    # otherwise simply checking for an empty list
+    # is sufficient has has lower overhead on long
+    # lists.
+
+    $listh->head;
+
+    my @data    = ();
+
+    while( @data = $listh->each )
+    {
+        # play with @data
+    }
+
+=item unshift shift push 
+
+Notice the lack of "pop": it is quite expensive to 
+maitain a node-before-the-last-data-node entry in
+order to guarantee removing the last node.
+
+shift and unshift are cheap since they can 
+access the root node in one step.
+
+push can be quite inexpensive if the current
+node is at the end-of-list when it is called:
+
+This is the cheap way to do it: leaving $$listh
+at the end-of-list after each push:
+
+    my $listh   = LinkedList::Single->new;
+
+    for(;;)
+    {
+        my @data    = generate_some_data
+        or last;
+
+        $listh->push( @data );
+    }
+
+If $listh is not already at the end-of-list
+then push gets expensive since the list has 
+to be traversed in order to find the end and
+perform the push.
+
+Note that walking the list can still be done
+between pushes by cloning the list handler 
+and moving the clone or saving the final node
+and re-setting the list before each push.
+
+For an insertion sort, each will leave the
+list handler on the last node:
+
+    my $listh   = LinkedList::Single->new;
+
+    my $new     = '';
+    my $old     = '';
+
+    DATA:
+    while( my $new = next_data_to_insert )
+    {
+        $listh->head;
+
+        while( $old = $listh->each ) 
+        {
+            # decide if the new data is a duplicate
+            # or not. this requires examining
+            # the entire list.
+
+            is_duplicate_data $new, $old
+            and next DATA;
+        }
+
+        # at this point $listh is at the end-of-list.
+
+        $listh->push( @$new );
+    }
+
+=item add cut splice
+
+add appends a node after the current one, cut removes
+the next node, returning its data if not called in a 
+void context.
+
+splice is like Perl's splice: it takes a number of items
+to remove, optionally replacing them with the rest of the
+stack, one value per node:
+
+    my @new_nodz    = ( 1 .. 5 );
+
+    my $old_count   = 5;
+
+    my $old_list    = $listh->splice( $old_count, @new_nodz );
+
+If called in a non-void context, the old nodes have 
+a terminator added and are returned to the caller as
+an array of arrayrefs with the old data. This can be 
+used to re-order portions of the list.
+
+
+=item truncate
+
+Chops the list off after the current node. 
+
+Note that doing this to the head node will not 
+empty the list: it leaves the top node dangling.
+
+
+
+=back
+
 
 =head1 AUTHOR
 

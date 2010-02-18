@@ -11,20 +11,18 @@ use_ok $class;
 
 ok do
 {
-    my $node    = $class->new;
-    my $head    = $node->head;
+    my $listh   = $class->new;
+    my $sanity  = $listh->head;
 
-    my $sanity
-    = refaddr $head == refaddr $node
-    and blessed $head eq blessed $node;
-
-}, "head returns node ($class)";
+    refaddr $listh == refaddr $sanity
+},
+"head returns list handler ($class)";
 
 ok do
 {
-    my $node    = $class->new( 1 );
+    my $listh   = $class->new( 1 );
 
-    my ( $found ) = $node->data;
+    my ( $found ) = $listh->data;
 
     1 == $found 
 
@@ -36,13 +34,13 @@ ok do
     # the cleanup fails with the 100-th level of 
     # recursion.
 
-    my $node    = $class->new( 1 .. 200 );
+    my $listh   = $class->new( 1 .. 200 );
 
-    my $head    = $node->head_ref;
+    my $head    = $listh->head_ref;
 
     weaken $head;
 
-    undef $node;
+    undef $listh;
 
     not defined $head
 
