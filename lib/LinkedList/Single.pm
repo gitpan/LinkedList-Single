@@ -31,18 +31,11 @@ use overload
     },
 );
 
-BEGIN
-{
-    our $VERSION
-    = $[ >=  5.10
-    ? do{ require "$]"; v0.99.4 }
-    : '0.99.4'
-    ;
-}
-
 ########################################################################
 # package variables
 ########################################################################
+
+our $VERSION    = v0.99.4;
 
 # inside-out data for the heads of the lists.
 

@@ -9,31 +9,37 @@ my $class   = 'LinkedList::Single';
 
 use_ok $class;
 
-my $ignore
-= qr
-{
-    \b
-    (
-        import  |
-        qualify |
-        gensym  |
-        refaddr |
-        blessed |
-        BEGIN   |
-        OVERLOAD|
-        push    |
-        carp    |
-        __ANON__
-    )
-    \b
-}x;
-
 my @expect
-= grep
-{
-    ! /\W/ and ! /$ignore/o 
-}
-keys %{ $::{'LinkedList::'}{'Single::'} };
+= qw
+(
+    DESTROY
+    add
+    add_meta
+    clear_data
+    clone
+    construct
+    cut
+    data
+    each
+    get_meta
+    has_next
+    has_nodes
+    head
+    head_node
+    initialize
+    is_empty
+    new
+    next
+    node
+    push
+    root
+    set_data
+    set_meta
+    shift
+    splice
+    truncate
+    unshift
+);
 
 ok $class->can( $_ ),   "$class can '$_'" for @expect;
 

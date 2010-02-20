@@ -10,7 +10,7 @@ my $class   = 'LinkedList::Single';
 
 # yes, this is abusive: it is intended to be.
 
-my @passes  = ( 1 .. 22 );
+my @passes  = ( 1 .. 16 );
 
 plan tests => 1 + 2 * @passes;
 
