@@ -36,7 +36,7 @@ ok do
 
     my $listh   = $class->new( 1 .. 200 );
 
-    my $head    = $listh->head_ref;
+    my $head    = $listh->root;
 
     weaken $head;
 
