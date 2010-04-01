@@ -1,0 +1,9 @@
+
+0.99.9 Thu Apr  1 10:59:40 EDT 2010
+
+- Accessing the root node now uses the same format
+  as head node: $listh->root or $listh->root_node.
+
+- Minor clenaups to splice method (not user visible).
+
+- Update POD.

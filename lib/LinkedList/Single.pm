@@ -6,10 +6,11 @@ package LinkedList::Single;
 
 use v5.8;
 use strict;
+use FindBin::libs;
 
 use Carp;
 
-use Scalar::Util    qw( blessed refaddr );
+use Scalar::Util    qw( blessed refaddr looks_like_number );
 use Symbol;
 
 use overload
@@ -27,15 +28,53 @@ use overload
 
         my $listh   = shift;
 
-        !! $$listh->[0]
+        $$listh && @{ $$listh }
     },
+
+    q{+} =>
+    sub
+    {
+        my ( $listh, $offset ) 
+        = $_[2] 
+        ? @_[1,0] 
+        : @_[0,1]
+        ;
+
+        my $node    = $$listh || $listh->head_node;
+
+        # i.e., $offset == 0, gets ( 1 .. 0 ) for no change.
+
+        for ( 1 .. $offset )
+        {
+            $node or last;
+
+            $node       = $node->[0];
+        }
+
+        $node
+    },
+
+    q{+=} =>
+    sub
+    {
+        my ( $listh, $offset ) 
+        = $_[2] 
+        ? @_[1,0] 
+        : @_[0,1]
+        ;
+
+        $$listh = $listh + $offset;
+
+        $listh
+    },
+
 );
 
 ########################################################################
 # package variables
 ########################################################################
 
-our $VERSION    = '0.99.6';
+our $VERSION    = '0.99.9';
 
 # inside-out data for the heads of the lists.
 
@@ -198,6 +237,17 @@ sub truncate
     $listh
 }
 
+sub replace
+{
+    my $listh   = shift;
+
+    $listh->head->truncate;
+
+    $listh->initialize( @_ );
+
+    $listh
+}
+
 ########################################################################
 # basic information: the current node referenced by the list handler
 #
@@ -295,6 +345,19 @@ sub data
     : \@valz
 }
 
+sub next_data
+{
+    my $listh   = shift;
+    my $node    = $$listh;
+    my $next    = $node->[0];
+
+    my @valz    = @{ $next }[ 1 .. $#$next ];
+
+    wantarray
+    ?  @valz
+    : \@valz
+}
+
 sub set_data
 {
     my $listh   = shift;
@@ -340,16 +403,25 @@ sub clear_data
 # head_node for externally walking the
 # list (i.e., when OO calls are too expensive).
 
-sub root
+sub root_node
 {
     $headz{ refaddr $_[0] }
+}
+
+sub root
+{
+    my $listh   = shift;
+
+    $$listh     = $listh->root_node;
+
+    $listh
 }
 
 sub head_node
 {
     my $listh   = shift;
 
-    $listh->root->[0]
+    $listh->root_node->[0]
 }
 
 sub head
@@ -473,14 +545,13 @@ sub splice
     my $node    = $$listh
     or confess "Bogus splice: empty list handler";
 
-    my $next    = $node;
+    my $tail    = $node;
 
     for( 1 .. $count )
     {
-        @$next
-        or last;
+        @$tail or last;
 
-        $next   = $next->[0];
+        $tail   = $tail->[0];
     }
 
     # this is the start of the chain that gets removed.
@@ -490,7 +561,7 @@ sub splice
     # after that, splice the node out of the list.
 
     my $dead    = $node->[0];
-    $node->[0]  = delete $next->[0];
+    $node->[0]  = delete $tail->[0];
 
     # at this point $dead is a runt linked
     # list without a terminating node.
@@ -511,23 +582,22 @@ sub splice
 
     if( defined wantarray )
     {
-        my @valz    = ();
+        # hand back a linked list with $dead as the head node.
 
-        $node       = $dead;
+        $tail->[0]  = [];
+        
+        my $new     = $listh->new;
 
-        while( $node->[0] )
-        {
-            push @valz, @{ $node }[ 1 .. $#$node ];
-        }
+        my $head    = $$new;
 
-        $cleanup->( $dead );
+        @$head      = @$dead;
 
-        wantarray
-        ? @valz
-        : \@valz
+        $new
     }
     else
     {
+        # discard the dead links.
+
         $cleanup->( $dead );
     }
 }
@@ -562,7 +632,7 @@ sub push
 
 sub unshift
 {
-    my $root    = $_[0]->root;
+    my $root    = $_[0]->root_node;
 
     $root->[0]  = [ $root->[0], @_ ];
 
@@ -572,7 +642,7 @@ sub unshift
 sub shift
 {
     my $listh   = shift;
-    my $root    = $listh->root;
+    my $root    = $listh->root_node;
 
     # need to replace $listh contents if it
     # referrs to the head we are removing!
@@ -723,7 +793,7 @@ LinkedList::Single - singly linked list manager.
 
     # for those do-it-yourselfers in the crowd:
 
-    my $node    = $listh->root;
+    my $node    = $listh->root_node;
 
     while( @$node )
     {
@@ -734,6 +804,11 @@ LinkedList::Single - singly linked list manager.
 
         # process @data...
     }
+
+    # or, by moving the list handle to the
+    # root node, you can splice off the head.
+
+    my $head_node   = $listh->root->splice( 1 );
 
     # if you prefer OO...
     # $listh->each returns each value in order then
@@ -751,7 +826,7 @@ LinkedList::Single - singly linked list manager.
         # deal with @$data
     }
 
-    # if you *know* the nodes are never empty
+    # if you *know* the nodes are never empty.
 
     while( my @data = $listh->each )
     {
@@ -892,7 +967,7 @@ the new node.
 This is also the place to get nodes for processing
 by functional code or derived classes.
 
-=item root head_node
+=item head_node root_node root
 
 The head node is the first one containing user 
 data; the root node references the head and 
@@ -915,7 +990,7 @@ list using functional code:
 
 moves the least amount of data to walk the entire list.
 
-root is mainly useful for intenal code or derived
+root_node is mainly useful for intenal code or derived
 classes. This is used by all methods other than
 the construction and teardown methods to access
 the list's root node. Derived classes can override
@@ -926,10 +1001,17 @@ For example, unshift has to insert a node before
 the current head. It uses $lish->root to get a
 root node and then:
 
-    my $root   = $listh->root;
+    my $root   = $listh->root_node;
     $root->[0] = [ $root->[0], @_ ];
 
 to create the new head node.
+
+If you want to splice off the head node then 
+you need to start from the root node:
+
+    $listh->root;
+
+    my $old_head    = $listh->splice( 10 );
 
 =item head next each
 
@@ -1077,15 +1159,39 @@ stack, one value per node:
 
     my @new_nodz    = ( 1 .. 5 );
 
-    my $old_count   = 5;
+    my $old_count   = 3;
 
     my $old_list    = $listh->splice( $old_count, @new_nodz );
 
-If called in a non-void context, the old nodes have
-a terminator added and are returned to the caller as
-an array of arrayrefs with the old data. This can be
-used to re-order portions of the list.
+If called in a non-void context, the spliced-out 
+section has a terminator added and is returned as
+a LL::S object. Otherwise it is simply discarded.
 
+=over 4
+
+=item Avoid off-by-one errors splicing the head node
+
+Note that splicing starts after the current node.
+To splice out the head node (i.e., first one with 
+user data) use <C>$listh->root<C> instead of
+<C>$listh->head<C> to position the current node.
+
+For example:
+
+    my $listh   = LinkedList::Single->new( 1 .. 20 );
+
+    my $removed = $listh->root->splice( 10 );
+
+will strip the first 10 nodes off the top, leaving
+$removed with (1 .. 10) and $listh with (11..10).
+At this point $listh->node_data will return the 
+contents of the new head node: 11.
+
+If $listh->head->splice(10) were used instead then
+$listh would have (1,12..20) and $removed would
+contain 10 nodes (2..11).
+
+=back
 
 =item truncate
 
@@ -1100,6 +1206,16 @@ To zero out an existing list use
 
 which leaves the set_meta/add_meta contents untouched
 but removes all nodes.
+
+=item replace
+
+There are times when it is useful to retain the 
+current list handler but replace the contents.
+
+This is equivalent to:
+
+    $listh->head->truncate;
+    $listh->initialize( @new_contents );
 
 =back
 
