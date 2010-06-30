@@ -1,4 +1,9 @@
 
+0.99.10 Wed Jun 30 16:28:49 EDT 2010
+
+- Replaced 'data' with 'node_data'.
+- Minor cleanups to splice, tests.
+
 0.99.9 Thu Apr  1 10:59:40 EDT 2010
 
 - Accessing the root node now uses the same format

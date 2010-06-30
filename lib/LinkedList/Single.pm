@@ -74,7 +74,7 @@ use overload
 # package variables
 ########################################################################
 
-our $VERSION    = '0.99.9';
+our $VERSION    = '0.99.7';
 
 # inside-out data for the heads of the lists.
 
@@ -331,18 +331,16 @@ sub is_empty
     ! @{ $$listh }
 }
 
-sub data
+sub node_data
 {
     my $listh   = shift;
     my $node    = $$listh;
 
     # return the existing data, sans the next ref.
 
-    my @valz    = @{ $node }[ 1 .. $#$node ];
-
     wantarray
-    ?  @valz
-    : \@valz
+    ?   @{ $node }[ 1 .. $#$node ]
+    : [ @{ $node }[ 1 .. $#$node ] ]
 }
 
 sub next_data
@@ -396,6 +394,24 @@ sub clear_data
     $listh
 }
 
+sub list_data
+{
+    my $listh   = shift;
+    my $node    = $$listh;
+
+    my @return  = ();
+
+    while( @$node )
+    {
+        my ( $node, @data ) = @$node;
+        push @return, \@data;
+    }
+
+    wantarray
+    ?  @return
+    : \@return
+}
+
 ########################################################################
 # access the list head.
 #
@@ -441,9 +457,19 @@ sub next
     my $listh   = shift;
     my $node    = $$listh;
 
-    @$node
-    and
-    $$listh     = $node->[0];
+    my $count   = @_ ? shift : 1;
+
+    looks_like_number $count
+    or croak "Bogus move: '$count' is not a number";
+
+    for( 1 .. $count )
+    {
+        @$node or last;
+        
+        $node = $node->[0];
+    }
+
+    $$listh     = $node;
 
     $listh
 }
@@ -511,8 +537,7 @@ sub cut
 
     if( defined wantarray )
     {
-        my @valz   =  @{ $node->[0] };
-        $node->[0] = shift @valz;
+        ( $node->[0], my @valz ) = @{ $node->[0] };
 
         wantarray
         ?  @valz
@@ -534,57 +559,70 @@ sub cut
 sub splice
 {
     my $listh   = shift;
-    my $count   = shift || 1;
+    my $count   = shift || 0;
 
     looks_like_number $count
-    or croak "Bogus splice: non-numeric '$count'";
+    or croak "Bogus splice: non-numeric count '$count'";
 
-    $count > 0
-    or croak "Bogus splice: negative count '$count'";
+    $count < 0
+    and croak "Bogus splice: negative count '$count'";
+
+    # short circut if there is nothing to do.
+
+    $count > 0 || @_ or return;
 
     my $node    = $$listh
     or confess "Bogus splice: empty list handler";
 
-    my $tail    = $node;
+    my $dead    = '';
 
-    for( 1 .. $count )
+    if( $count > 0 )
     {
-        @$tail or last;
+        my $tail    = $node;
 
-        $tail   = $tail->[0];
+        for( 1 .. $count )
+        {
+            @$tail or last;
+
+            $tail   = $tail->[0];
+        }
+
+        # this is the start of the chain that gets removed.
+        # keep it alive for a few steps to see if the caller
+        # wants it back or we should clean it up.
+        #
+        # after that, splice the node out of the list.
+
+        $dead       = $node->[0];
+        $node->[0]  = delete $tail->[0];
+        $tail->[0]  = [];
     }
 
-    # this is the start of the chain that gets removed.
-    # keep it alive for a few steps to see if the caller
-    # wants it back or we should clean it up.
-    #
-    # after that, splice the node out of the list.
-
-    my $dead    = $node->[0];
-    $node->[0]  = delete $tail->[0];
-
-    # at this point $dead is a runt linked
-    # list without a terminating node.
+    # at this point $dead is either false or 
+    # a runt linked list lacking its terminating
+    # node.
     #
     # insert anything on the stack after the
     # current node.
 
     for( @_ )
     {
-       $node    = $node->[0] = [ $node->[0], shift ];
+       $node    = $node->[0] = [ $node->[0], $_ ];
     }
+
+    # nothing to return or clean up if there 
+    # wasn't anything removed.
+
+    $dead or return;
 
     # if the caller wants anything back then
     # clean up the dead chain and hand it back.
     #
-    # node: maybe this should return an array of
-    # arrayrefs?
+    # alternative: array of data?
 
     if( defined wantarray )
     {
         # hand back a linked list with $dead as the head node.
-
-        $tail->[0]  = [];
         
         my $new     = $listh->new;
 
@@ -592,16 +630,17 @@ sub splice
 
         @$head      = @$dead;
 
-        $new
+        return $new
     }
     else
     {
-        # discard the dead links.
-
         $cleanup->( $dead );
+
+        return
     }
 }
 
+########################################################################
 # aside: push can be very expensive.
 # but, then, so is maintaining a separate
 # node-before-the-tail entry.
@@ -703,7 +742,7 @@ LinkedList::Single - singly linked list manager.
 
     # extract the data from the current node.
 
-    my @data    = $listh->data;
+    my @data    = $listh->node_data;
 
     # save and restore a node position
 
@@ -785,7 +824,7 @@ LinkedList::Single - singly linked list manager.
 
         my $altlist = $listh->clone;
 
-        my @data    = $altlist->next->data;
+        my @data    = $altlist->next->node_data;
 
         ...
     }
@@ -826,14 +865,14 @@ LinkedList::Single - singly linked list manager.
         # deal with @$data
     }
 
-    # if you *know* the nodes are never empty.
+    # if you *know* the nodes are never empty
 
     while( my @data = $listh->each )
     {
         # deal with @data
     }
 
-    # note that $listh->next->data may be empty
+    # note that $listh->next->node_data may be empty
     # even if there are mode nodes due to a node
     # having no data.
 
@@ -939,7 +978,7 @@ into a single method because there isn't any clean way
 to determine if the node needs to be emptied or left
 unmodified due to an empty stack. The option of using
 
-    $listh->data( undef )
+    $listh->node_data( undef )
 
 for cleaning the node leaves no way to store an explicit
 undef in the node.
@@ -1159,39 +1198,15 @@ stack, one value per node:
 
     my @new_nodz    = ( 1 .. 5 );
 
-    my $old_count   = 3;
+    my $old_count   = 5;
 
     my $old_list    = $listh->splice( $old_count, @new_nodz );
 
-If called in a non-void context, the spliced-out 
-section has a terminator added and is returned as
-a LL::S object. Otherwise it is simply discarded.
+If called in a non-void context, the old nodes have
+a terminator added and are returned to the caller as
+an array of arrayrefs with the old data. This can be
+used to re-order portions of the list.
 
-=over 4
-
-=item Avoid off-by-one errors splicing the head node
-
-Note that splicing starts after the current node.
-To splice out the head node (i.e., first one with 
-user data) use <C>$listh->root<C> instead of
-<C>$listh->head<C> to position the current node.
-
-For example:
-
-    my $listh   = LinkedList::Single->new( 1 .. 20 );
-
-    my $removed = $listh->root->splice( 10 );
-
-will strip the first 10 nodes off the top, leaving
-$removed with (1 .. 10) and $listh with (11..10).
-At this point $listh->node_data will return the 
-contents of the new head node: 11.
-
-If $listh->head->splice(10) were used instead then
-$listh would have (1,12..20) and $removed would
-contain 10 nodes (2..11).
-
-=back
 
 =item truncate
 

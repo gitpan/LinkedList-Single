@@ -19,7 +19,7 @@ my @expect
     clone
     construct
     cut
-    data
+    node_data
     each
     get_meta
     has_next
