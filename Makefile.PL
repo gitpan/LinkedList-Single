@@ -6,7 +6,7 @@ WriteMakefile
 (
 
   NAME          => 'LinkedList::Single',
-  VERSION       => '0.99.10',
+  VERSION       => '0.99.11',
   ABSTRACT_FROM => 'lib/LinkedList/Single.pm',
   PREREQ_PM     =>
   {

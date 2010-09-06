@@ -22,7 +22,7 @@ ok do
 {
     my $listh   = $class->new( 1 );
 
-    my ( $found ) = $listh->node_data;
+    my ( $found ) = $listh->data;
 
     1 == $found 
 

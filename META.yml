@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               LinkedList-Single
-version:            0.99.10
+version:            0.99.11
 abstract:           singly linked list manager.
 author:  []
 license:            unknown

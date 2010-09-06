@@ -1,7 +1,6 @@
 lib/LinkedList/Single.pm
 Makefile.PL
 MANIFEST
-CHANGES
 t/00-LinkedList-Single.t
 t/01-LinkedList-Single-construct.t
 t/02-LinkedList-Single-walk.t

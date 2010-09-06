@@ -15,7 +15,7 @@ my $listh   = $class->new( 1 .. $count );
 
 for my $expect ( 1 .. $count )
 {
-    my ( $found ) = $listh->node_data;
+    my ( $found ) = $listh->data;
 
     ok $found == $expect, "Data: $found ($expect)";
 
@@ -25,7 +25,7 @@ for my $expect ( 1 .. $count )
 ok
 do
 {
-    my @a   = $listh->node_data;
+    my @a   = $listh->data;
 
     ! @a
 }, 'List exhausted';
