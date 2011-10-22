@@ -1,26 +1,27 @@
 
-use 5.008;
+use v5.12;
 use ExtUtils::MakeMaker;
 
 WriteMakefile
 (
+    NAME            => 'LinkedList::Single',
+    VERSION         => 'v0.99.20',
+    ABSTRACT_FROM   => 'lib/LinkedList/Single.pm',
+    LICENSE         => 'perl',
+    PREREQ_PM       =>
+    {
+        qw
+        (
+            strict              0
+            overload            0
 
-  NAME          => 'LinkedList::Single',
-  VERSION       => '0.99.11',
-  ABSTRACT_FROM => 'lib/LinkedList/Single.pm',
-  PREREQ_PM     =>
-  {
-    # standard distro, particular versions 
-    # are unlikely to cause pain.
-
-    strict              => 0,
-    overload            => 0,
-
-    Carp                => 0,
-    Symbol              => 0,
-    Scalar::Util        => 0,
-    Test::More          => 0,
-    ExtUtils::MakeMaker => 0,
-  },
-
+            Carp                0
+            Symbol              0
+            Scalar::Util        0
+            Test::More          0
+            ExtUtils::MakeMaker 0
+        )
+    },
 );
+
+__END__

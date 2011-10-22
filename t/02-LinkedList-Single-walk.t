@@ -1,6 +1,5 @@
 
-use 5.008;
-use strict;
+use v5.12;
 
 use Test::More;
 use Scalar::Util    qw( blessed refaddr reftype weaken );
@@ -32,7 +31,7 @@ do
 
 done_testing;
 
-# this is not a modle
+# this is not a module
 
 0
 

@@ -4,8 +4,7 @@
 
 package LinkedList::Single;
 
-use v5.8;
-use strict;
+use v5.12;
 
 use Carp;
 
@@ -23,12 +22,15 @@ use overload
         #
         # this allows for:
         #
-        # $listh->head; while( $listh->next ){ ... }
+        # $listh->head; while( $listh ){ ... }
 
         my $listh   = shift;
 
         $$listh && @{ $$listh }
     },
+
+    # return a node at the given offset.
+    # update the list to that point.
 
     q{+} =>
     sub
@@ -73,7 +75,7 @@ use overload
 # package variables
 ########################################################################
 
-our $VERSION    = '0.99.9';
+our $VERSION    = v0.99.20;
 
 # inside-out data for the heads of the lists.
 
@@ -82,6 +84,60 @@ my %headz   = ();
 ########################################################################
 # utility subs
 ########################################################################
+
+########################################################################
+# perl's recursive cleanups croaks after 100 levels, kinda limits the
+# list size. fix is converting it to iterative by replacing the
+# head node.
+#
+# nasty business: simplest solution gets sig11's
+# in 5.8 & 5.10.1 with lists 2**15 long or more.
+# probelem is that destroy pukes after
+# returning. only fix so far is keeping the
+# heads alive permenantly (i.e., mem leak is
+# feature)
+#
+#    $head   = $head->[0]
+#    while $head->[0];
+#
+# fix is expanding the list in place, which
+# takes a bit more work.
+#
+#   @$head  = @{ $head->[0] }
+#   while $head->[0];
+#
+# weird thing is that it blows up after DESTROY returns,
+# not when the entry is deleted from $headz{ $key }.
+#
+# net result: truncate works fine with the fast method,
+# DESTROY has to expand out the contents to make it work.
+#
+# note that doing this without the separate $node
+# variable gets the sigfault ( i.e.,
+#
+#   $head->[0] = @{ $head->[0] }
+#
+# blows up).
+#
+# see t/03*.t for example of testing this particular
+# issue.
+
+my $cleanup
+= sub
+{
+    my $node    = shift;
+
+#    ( $node->[0] ) = @{ $node->[0] }
+#    while $node->[0];
+#
+# see if this works with 5.12 or 5.14..
+
+    $node   = $node->[0]
+    while $node->[0];
+
+    return
+};
+
 
 ########################################################################
 # public interface
@@ -157,54 +213,6 @@ sub clone
 
     $clone
 }
-
-########################################################################
-# perl's recursive cleanups croaks after 100 levels, kinda limits the
-# list size. fix is converting it to iterateive by replacing the
-# head node.
-#
-# nasty business: simplest solution gets sig11's
-# in 5.8 & 5.10.1 with lists 2**15 long or more.
-# probelem is that destroy pukes after
-# returning. only fixe so far is keeping the
-# heads alive permenantly (i.e., mem leak is
-# feature)
-#
-#    $head   = $head->[0]
-#    while $head->[0];
-#
-# fix is expanding the list in place, which
-# takes a bit more work.
-#
-#   @$head  = @{ $head->[0] }
-#   while $head->[0];
-#
-# wierd thing is that it blows up after DESTROY returns,
-# not when the entry is deleted from $headz{ $key }.
-#
-# net result: truncate works fine with the fast method,
-# DESTROY has to expand out the contents to make it work.
-#
-# note that doing this without the separate $node
-# variable gits the sigfault ( i.e.,
-#
-#   $head->[0] = @{ $head->[0] }
-#
-# blows up).
-#
-# see t/03*.t for example of testing this particular
-# issue.
-
-my $cleanup
-= sub
-{
-    my $node    = shift;
-
-    ( $node->[0] ) = @{ $node->[0] }
-    while $node->[0];
-
-    return
-};
 
 sub DESTROY
 {
@@ -407,6 +415,13 @@ sub root_node
     $headz{ refaddr $_[0] }
 }
 
+sub head_node
+{
+    my $listh   = shift;
+
+    $listh->root_node->[0]
+}
+
 sub root
 {
     my $listh   = shift;
@@ -416,18 +431,32 @@ sub root
     $listh
 }
 
-sub head_node
-{
-    my $listh   = shift;
-
-    $listh->root_node->[0]
-}
-
 sub head
 {
     my $listh   = shift;
 
     $$listh     = $listh->head_node;
+
+    $listh
+}
+
+# surgery: replace the head node.
+# leaves most sanity checks in the 
+# caller's hands.
+#
+# mainly useful for cross-linked lists.
+
+sub new_head
+{
+$DB::single = 1;
+
+    my ( $listh, $head ) = @_;
+
+    my $root    = $listh->root_node;
+
+    $head       = splice @$root, 0, 1, $head;
+
+    $cleanup->( $head );
 
     $listh
 }
@@ -724,7 +753,7 @@ LinkedList::Single - singly linked list manager.
 
     # note the lack of "pop", it is simply too
     # expensive with singly linked lists. for
-    # a stack use unsift and shift; for a que
+    # a stack use unshift and shift; for a queue
     # use push and shift (or seriously consider
     # using arrays, which are a helluva lot more
     # effective for the purpose).
@@ -742,7 +771,7 @@ LinkedList::Single - singly linked list manager.
 
     my @data    = $listh->shift;
 
-    # sequences of pushes are effecient for adding
+    # sequences of pushes are efficient for adding
     # longer lists.
 
     my $wcurve  = LinkedList::Single->new;
@@ -1202,6 +1231,39 @@ This is equivalent to:
     $listh->head->truncate;
     $listh->initialize( @new_contents );
 
+=item new_head
+
+Adds a pre-existing linked below the root. The difference
+between this and replace is that the new list must already
+exist; the similarity is that any existing list is cleaned
+up.
+
+The main use of this is adding skip chains to an existing
+linked list. One example would be adding skip chains 
+for each letter of the alphabet in an alphabetically-
+sorted list:
+
+    my $node    = $listh->head;
+
+    $node = $node->[0] while $node->[1] lt $letter;
+
+    my $skip    = $listh->new;
+
+    $skip->new_head( $node );
+
+    $skip_chainz{ $letter } = $skip;
+
+The advantage to this approach is being able to 
+maintain a single list and avoid traversing all
+of it in order to locate known starting points.
+
+A similar result can be had by storing $node and
+calling $listh->node( $node ) later on to reset
+the position. The downside here is that any 
+state in the list handler object is lost, where
+the separate lists can be manipulated seprately
+with things like $listh->head.
+
 =back
 
 =head1 AUTHOR
@@ -1210,8 +1272,9 @@ Steven Lembark <lembark@wrkhors.com>
 
 =head1 COPYRIGHT
 
-Copyright (C) 2009, 2010 Steven Lembark.
+Copyright (C) 2009-2011 Steven Lembark.
 
 =head1 LICENSE
 
-This code can be used under the same terms as Perl-5.10.1 itself.
+This code can be used under the same terms as v5.14 or
+any later version of Perl.

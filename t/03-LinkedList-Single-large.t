@@ -1,6 +1,5 @@
 
-use v5.8;
-use strict;
+use v5.12;
 
 use Test::More;
 
@@ -31,7 +30,7 @@ for( @passes )
     pass "Destroy: $_ ($size)";
 }
 
-# this is not a modle
+# this is not a module
 
 0
 

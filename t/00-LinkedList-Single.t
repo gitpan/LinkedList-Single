@@ -1,6 +1,5 @@
 
-use v5.8;
-use strict;
+use v5.12;
 
 use Test::More;
 use Scalar::Util    qw( reftype );
