@@ -5,7 +5,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile
 (
     NAME            => 'LinkedList::Single',
-    VERSION         => 'v0.99.20',
+    VERSION         => 'v0.99.21',
     ABSTRACT_FROM   => 'lib/LinkedList/Single.pm',
     LICENSE         => 'perl',
     PREREQ_PM       =>

@@ -18,7 +18,6 @@ my @expect
     clone
     construct
     cut
-    data
     each
     get_meta
     has_next
@@ -28,6 +27,7 @@ my @expect
     initialize
     is_empty
     new
+    new_head
     next
     node
     push

@@ -20,7 +20,7 @@ my @found
 {
     $listh  += $_;
 
-    $listh->data;
+    $listh->node_data;
 }
 @offsetz;
 
