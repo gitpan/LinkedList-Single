@@ -7,21 +7,18 @@ my $dest	= 'lib/LinkedList/Single.pm';
 
 -e $dest && unlink $dest;
 
-if( eval{ require v5.16 } )
-{
-	# beyond where the recursive destroy causes problems.
+eval{ require v5.16 }
+? link 'Single-Post516_pm' => $dest
+: link 'Single-Pre516_pm'  => $dest
+;
 
-	link 'lib/LinkedList/Single-Post516.pm' => $dest;
-}
-else
-{
-	link 'lib/LinkedList/Single-Pre516.pm' => $dest;
-}
+our $VERSION = '1.02';
+$VERSION = eval $VERSION;
 
 WriteMakefile
 (
     NAME            => 'LinkedList::Single',
-    VERSION         =>  1.01,
+    VERSION         =>  $VERSION,
     ABSTRACT_FROM   => $dest,
     LICENSE         => 'perl',
     PREREQ_PM       =>

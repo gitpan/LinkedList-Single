@@ -26,4 +26,4 @@ requires:
   Test::More: '0'
   overload: '0'
   strict: '0'
-version: 1.01
+version: 1.02
